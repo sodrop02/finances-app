@@ -1,0 +1,23 @@
+{
+  "name": "finances-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Personal finances tracker with Plaid",
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev -w api\" \"npm:dev -w web\"",
+    "build": "npm run build -w api && npm run build -w web",
+    "db:migrate": "npm run db:migrate -w api",
+    "db:studio": "npm run db:studio -w api",
+    "setup": "npm install && npm run db:migrate -w api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

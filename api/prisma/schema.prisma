@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Swap to "postgresql" later; DATABASE_URL is the only other change needed.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A Plaid Item = one login at one financial institution.
+model Item {
+  id             String        @id @default(cuid())
+  plaidItemId    String        @unique
+  accessToken    String // AES-256-GCM encrypted, never stored in plaintext
+  institutionId  String?
+  institution    String?
+  cursor         String? // transactions/sync cursor
+  status         String        @default("active")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  accounts       Account[]
+  transactions   Transaction[]
+}
+
+model Account {
+  id               String        @id @default(cuid())
+  plaidAccountId   String        @unique
+  itemId           String
+  item             Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  name             String
+  officialName     String?
+  mask             String?
+  type             String
+  subtype          String?
+  currentBalance   Int? // minor units (cents)
+  availableBalance Int?
+  isoCurrencyCode  String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  transactions     Transaction[]
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  plaidTxnId      String   @unique
+  itemId          String
+  item            Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount          Int // minor units. Plaid convention: positive = money OUT of the account
+  isoCurrencyCode String?
+  date            DateTime
+  authorizedDate  DateTime?
+  name            String
+  merchantName    String?
+  category        String?
+  categoryDetailed String?
+  paymentChannel  String?
+  pending         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([date])
+  @@index([accountId])
+}
+
+// Key-value store for small bits of app state (e.g. last sync time).
+model Meta {
+  key   String @id
+  value String
+}
