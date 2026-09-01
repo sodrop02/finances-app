@@ -1,11 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
   type Account,
+  type AmountBucket,
   type PlaidItem,
   type Summary,
   type Transaction,
 } from './api';
+import { sinceDate } from './historyRange';
 
 export function useAuth() {
   return useQuery({
@@ -37,7 +39,7 @@ export function useAccounts() {
   });
 }
 
-export function useSummary(days = 30) {
+export function useSummary(days = 120) {
   return useQuery({
     queryKey: ['summary', days],
     queryFn: () => api.get<Summary>(`/api/summary?days=${days}`),
@@ -48,18 +50,57 @@ export function useTransactions(params: {
   page: number;
   pageSize: number;
   accountId?: string;
+  itemId?: string;
   search?: string;
+  sortField?: string;
+  sortOrder?: 'asc' | 'desc';
+  minAmount?: number;
+  maxAmount?: number | null;
+  pending?: boolean;
+  /** limit to the last N days of history */
+  days?: number;
 }) {
   const search = new URLSearchParams({
     page: String(params.page),
     pageSize: String(params.pageSize),
   });
   if (params.accountId) search.set('accountId', params.accountId);
+  if (params.itemId) search.set('itemId', params.itemId);
+  if (params.days) search.set('from', sinceDate(params.days));
   if (params.search) search.set('search', params.search);
+  if (params.sortField) search.set('sortField', params.sortField);
+  if (params.sortOrder) search.set('sortOrder', params.sortOrder);
+  if (params.minAmount !== undefined) search.set('minAmount', String(params.minAmount));
+  if (params.maxAmount !== undefined && params.maxAmount !== null)
+    search.set('maxAmount', String(params.maxAmount));
+  if (params.pending !== undefined) search.set('pending', String(params.pending));
   return useQuery({
     queryKey: ['transactions', params],
     queryFn: () =>
       api.get<{ rows: Transaction[]; total: number }>(`/api/transactions?${search.toString()}`),
+    // keep showing the current page's rows while the next page loads, instead
+    // of briefly dropping to rows:[] / total:0 — which was making the DataGrid
+    // clamp its pagination back to page 1 on every page change
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useTransactionBuckets(params: {
+  accountId?: string;
+  itemId?: string;
+  search?: string;
+  days?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params.accountId) search.set('accountId', params.accountId);
+  if (params.itemId) search.set('itemId', params.itemId);
+  if (params.days) search.set('from', sinceDate(params.days));
+  if (params.search) search.set('search', params.search);
+  const qs = search.toString();
+  return useQuery({
+    queryKey: ['transaction-buckets', params],
+    queryFn: () => api.get<{ buckets: AmountBucket[] }>(`/api/transactions/buckets${qs ? `?${qs}` : ''}`),
+    placeholderData: keepPreviousData,
   });
 }
 

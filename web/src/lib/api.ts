@@ -41,6 +41,7 @@ export const api = {
 // ---- shared types ----
 export interface Account {
   id: string;
+  itemId: string;
   name: string;
   officialName: string | null;
   mask: string | null;
@@ -49,7 +50,7 @@ export interface Account {
   currentBalance: number | null;
   availableBalance: number | null;
   isoCurrencyCode: string | null;
-  item: { institution: string | null };
+  item: { id: string; institution: string | null };
 }
 
 export interface Transaction {
@@ -62,6 +63,14 @@ export interface Transaction {
   category: string | null;
   pending: boolean;
   account: { name: string; mask: string | null };
+}
+
+export interface AmountBucket {
+  label: string;
+  min: number;
+  max: number | null;
+  count: number;
+  total: number;
 }
 
 export interface Summary {
@@ -82,4 +91,15 @@ export interface PlaidItem {
 export function money(minor: number | null | undefined, currency = 'USD'): string {
   const value = (minor ?? 0) / 100;
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value);
+}
+
+// minor units (cents) -> compact display string, e.g. "$12.3K" — for tight labels
+export function compactMoney(minor: number | null | undefined, currency = 'USD'): string {
+  const value = (minor ?? 0) / 100;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
 }
