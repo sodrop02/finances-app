@@ -6,7 +6,7 @@ export async function accountRoutes(app: FastifyInstance) {
   app.get('/api/accounts', { preHandler: requireAuth }, async () => {
     const accounts = await prisma.account.findMany({
       orderBy: [{ item: { institution: 'asc' } }, { name: 'asc' }],
-      include: { item: { select: { institution: true } } },
+      include: { item: { select: { id: true, institution: true } } },
     });
     return { accounts };
   });

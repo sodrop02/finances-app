@@ -8,11 +8,13 @@ import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import { useAccounts, useItems, useSummary } from '../lib/queries';
 import { money } from '../lib/api';
+import { useHistoryRange } from '../lib/historyRange';
 import { PlaidLinkButton } from '../components/PlaidLinkButton';
 
 export function Dashboard() {
+  const { days } = useHistoryRange();
   const accounts = useAccounts();
-  const summary = useSummary(30);
+  const summary = useSummary(days);
   const items = useItems();
 
   const noBanks = items.data && items.data.items.length === 0;
@@ -68,7 +70,7 @@ export function Dashboard() {
           <Card>
             <CardContent>
               <Typography variant="overline" color="text.secondary">
-                Spent (last 30 days)
+                Spent (last {days} days)
               </Typography>
               <Typography variant="h4" fontWeight={700}>
                 {money(summary.data?.totalSpent)}
@@ -93,7 +95,7 @@ export function Dashboard() {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Spending by category (30 days)
+            Spending by category ({days} days)
           </Typography>
           <Stack spacing={1.5} mt={1}>
             {summary.data?.byCategory.map((c) => {

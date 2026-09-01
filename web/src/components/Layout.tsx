@@ -8,7 +8,10 @@ import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
 import { useSync, useLogout } from '../lib/queries';
+import { HISTORY_DAY_OPTIONS, useHistoryRange, type HistoryDays } from '../lib/historyRange';
 
 const tabs = [
   { label: 'Dashboard', to: '/' },
@@ -21,6 +24,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const sync = useSync();
   const logout = useLogout();
+  const { days, setDays } = useHistoryRange();
   const current = Math.max(
     0,
     tabs.findIndex((t) => t.to === location.pathname),
@@ -45,15 +49,35 @@ export function Layout({ children }: { children: ReactNode }) {
             Log out
           </Button>
         </Toolbar>
-        <Tabs
-          value={current}
-          onChange={(_e, v: number) => navigate(tabs[v].to)}
-          sx={{ px: 2 }}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 3,
+            px: 2,
+          }}
         >
-          {tabs.map((t) => (
-            <Tab key={t.to} label={t.label} />
-          ))}
-        </Tabs>
+          <Tabs value={current} onChange={(_e, v: number) => navigate(tabs[v].to)}>
+            {tabs.map((t) => (
+              <Tab key={t.to} label={t.label} />
+            ))}
+          </Tabs>
+          <TextField
+            select
+            size="small"
+            variant="standard"
+            label="History"
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value) as HistoryDays)}
+            sx={{ minWidth: 120, flexShrink: 0, alignSelf: 'center' }}
+          >
+            {HISTORY_DAY_OPTIONS.map((d) => (
+              <MenuItem key={d} value={d}>
+                Last {d} days
+              </MenuItem>
+            ))}
+          </TextField>
+        </Box>
       </AppBar>
       <Container maxWidth="lg" sx={{ py: 4 }}>
         {children}

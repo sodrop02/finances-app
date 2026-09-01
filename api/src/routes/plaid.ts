@@ -18,7 +18,8 @@ export async function plaidRoutes(app: FastifyInstance) {
       country_codes: [CountryCode.Us],
       language: 'en',
       ...(env.PLAID_WEBHOOK_URL ? { webhook: env.PLAID_WEBHOOK_URL } : {}),
-      transactions: { days_requested: 90 },
+      // comfortably covers the app's history selector; Plaid backfills more over time
+      transactions: { days_requested: 180 },
     });
     return { link_token: data.link_token };
   });
