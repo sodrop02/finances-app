@@ -7,7 +7,6 @@ import {
   type Summary,
   type Transaction,
 } from './api';
-import { sinceDate } from './historyRange';
 
 export function useAuth() {
   return useQuery({
@@ -39,10 +38,19 @@ export function useAccounts() {
   });
 }
 
-export function useSummary(days = 120) {
+export function useSummary(params: {
+  from: string;
+  to?: string;
+  accountId?: string;
+  itemId?: string;
+}) {
+  const qs = new URLSearchParams({ from: params.from });
+  if (params.to) qs.set('to', params.to);
+  if (params.accountId) qs.set('accountId', params.accountId);
+  if (params.itemId) qs.set('itemId', params.itemId);
   return useQuery({
-    queryKey: ['summary', days],
-    queryFn: () => api.get<Summary>(`/api/summary?days=${days}`),
+    queryKey: ['summary', params],
+    queryFn: () => api.get<Summary>(`/api/summary?${qs.toString()}`),
   });
 }
 
@@ -54,11 +62,11 @@ export function useTransactions(params: {
   search?: string;
   sortField?: string;
   sortOrder?: 'asc' | 'desc';
-  minAmount?: number;
-  maxAmount?: number | null;
-  pending?: boolean;
-  /** limit to the last N days of history */
-  days?: number;
+  /** selected amount-bucket `min` markers (dollars) — matches any of them (OR) */
+  amountBuckets?: number[];
+  /** history window, ISO dates (YYYY-MM-DD) — `to` omitted means "through now" */
+  from?: string;
+  to?: string;
 }) {
   const search = new URLSearchParams({
     page: String(params.page),
@@ -66,14 +74,12 @@ export function useTransactions(params: {
   });
   if (params.accountId) search.set('accountId', params.accountId);
   if (params.itemId) search.set('itemId', params.itemId);
-  if (params.days) search.set('from', sinceDate(params.days));
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
   if (params.search) search.set('search', params.search);
   if (params.sortField) search.set('sortField', params.sortField);
   if (params.sortOrder) search.set('sortOrder', params.sortOrder);
-  if (params.minAmount !== undefined) search.set('minAmount', String(params.minAmount));
-  if (params.maxAmount !== undefined && params.maxAmount !== null)
-    search.set('maxAmount', String(params.maxAmount));
-  if (params.pending !== undefined) search.set('pending', String(params.pending));
+  if (params.amountBuckets?.length) search.set('amountBuckets', params.amountBuckets.join(','));
   return useQuery({
     queryKey: ['transactions', params],
     queryFn: () =>
@@ -89,12 +95,14 @@ export function useTransactionBuckets(params: {
   accountId?: string;
   itemId?: string;
   search?: string;
-  days?: number;
+  from?: string;
+  to?: string;
 }) {
   const search = new URLSearchParams();
   if (params.accountId) search.set('accountId', params.accountId);
   if (params.itemId) search.set('itemId', params.itemId);
-  if (params.days) search.set('from', sinceDate(params.days));
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
   if (params.search) search.set('search', params.search);
   const qs = search.toString();
   return useQuery({

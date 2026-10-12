@@ -1,37 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
-import MenuItem from '@mui/material/MenuItem';
-import ListSubheader from '@mui/material/ListSubheader';
 import { DataGrid, type GridColDef, type GridPaginationModel, type GridSortModel } from '@mui/x-data-grid';
-import { useAccounts, useTransactions } from '../lib/queries';
-import { money } from '../lib/api';
+import { useTransactions } from '../lib/queries';
+import { formatDate, money } from '../lib/api';
 import { useHistoryRange } from '../lib/historyRange';
 import { AmountBuckets, type BucketSelection } from '../components/AmountBuckets';
-
-// The account dropdown value: everything, a whole institution, or one account.
-type AccountFilter =
-  | { kind: 'all' }
-  | { kind: 'item'; id: string }
-  | { kind: 'account'; id: string };
-
-function encodeFilter(f: AccountFilter): string {
-  return f.kind === 'all' ? 'all' : `${f.kind}:${f.id}`;
-}
-function decodeFilter(v: string): AccountFilter {
-  if (v === 'all') return { kind: 'all' };
-  const [kind, id] = v.split(':');
-  return { kind: kind as 'item' | 'account', id };
-}
+import { AccountSelect, ALL_ACCOUNTS, accountFilterParams, type AccountFilter } from '../components/AccountSelect';
 
 const columns: GridColDef[] = [
   {
     field: 'date',
     headerName: 'Date',
     width: 120,
-    valueFormatter: (value) => new Date(value as string).toLocaleDateString(),
+    valueFormatter: (value) => formatDate(value as string),
   },
   { field: 'name', headerName: 'Description', flex: 1, minWidth: 200 },
   {
@@ -62,36 +46,22 @@ export function Transactions() {
   const [search, setSearch] = useState('');
   const [pagination, setPagination] = useState<GridPaginationModel>({ page: 0, pageSize: 50 });
   const [sortModel, setSortModel] = useState<GridSortModel>([{ field: 'date', sort: 'desc' }]);
-  const [bucket, setBucket] = useState<BucketSelection | null>(null);
-  const [accountFilter, setAccountFilter] = useState<AccountFilter>({ kind: 'all' });
+  const [buckets, setBuckets] = useState<BucketSelection[]>([]);
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>(ALL_ACCOUNTS);
 
-  const { days } = useHistoryRange();
-  const accounts = useAccounts();
-
-  // group accounts by institution for the dropdown
-  const institutions = useMemo(() => {
-    const list = accounts.data?.accounts ?? [];
-    const groups = new Map<string, { id: string; name: string; accounts: typeof list }>();
-    for (const a of list) {
-      const g = groups.get(a.item.id);
-      if (g) g.accounts.push(a);
-      else groups.set(a.item.id, { id: a.item.id, name: a.item.institution ?? 'Bank', accounts: [a] });
-    }
-    return [...groups.values()];
-  }, [accounts.data]);
+  const { resolved } = useHistoryRange();
+  const accountParams = accountFilterParams(accountFilter);
 
   const { data, isLoading } = useTransactions({
     page: pagination.page,
     pageSize: pagination.pageSize,
-    days,
+    from: resolved.from,
+    to: resolved.to,
     search: search || undefined,
-    accountId: accountFilter.kind === 'account' ? accountFilter.id : undefined,
-    itemId: accountFilter.kind === 'item' ? accountFilter.id : undefined,
+    ...accountParams,
     sortField: sortModel[0]?.field,
     sortOrder: sortModel[0]?.sort ?? undefined,
-    minAmount: bucket?.min,
-    maxAmount: bucket?.max,
-    pending: bucket ? false : undefined,
+    amountBuckets: buckets.length ? buckets.map((b) => b.min) : undefined,
   });
 
   const resetPage = () => setPagination((p) => ({ ...p, page: 0 }));
@@ -112,42 +82,30 @@ export function Transactions() {
           }}
           sx={{ flex: 1, maxWidth: { sm: 320 } }}
         />
-        <TextField
-          select
-          size="small"
-          label="Account"
-          value={encodeFilter(accountFilter)}
-          onChange={(e) => {
-            setAccountFilter(decodeFilter(e.target.value));
+        <AccountSelect
+          value={accountFilter}
+          onChange={(f) => {
+            setAccountFilter(f);
             resetPage();
           }}
-          sx={{ minWidth: 220 }}
-        >
-          <MenuItem value="all">All accounts</MenuItem>
-          {institutions.flatMap((inst) => [
-            <ListSubheader key={`h-${inst.id}`} disableSticky>
-              {inst.name}
-            </ListSubheader>,
-            <MenuItem key={`i-${inst.id}`} value={`item:${inst.id}`}>
-              All of {inst.name}
-            </MenuItem>,
-            ...inst.accounts.map((a) => (
-              <MenuItem key={a.id} value={`account:${a.id}`} sx={{ pl: 4 }}>
-                {a.name}
-                {a.mask ? ` ••${a.mask}` : ''}
-              </MenuItem>
-            )),
-          ])}
-        </TextField>
+        />
       </Stack>
       <AmountBuckets
-        days={days}
+        from={resolved.from}
+        to={resolved.to}
         search={search || undefined}
-        accountId={accountFilter.kind === 'account' ? accountFilter.id : undefined}
-        itemId={accountFilter.kind === 'item' ? accountFilter.id : undefined}
-        selected={bucket}
-        onSelect={(b) => {
-          setBucket(b ? { min: b.min, max: b.max } : null);
+        {...accountParams}
+        selected={buckets}
+        onToggle={(b) => {
+          setBuckets((prev) =>
+            prev.some((s) => s.min === b.min && s.max === b.max)
+              ? prev.filter((s) => !(s.min === b.min && s.max === b.max))
+              : [...prev, { min: b.min, max: b.max }],
+          );
+          resetPage();
+        }}
+        onClear={() => {
+          setBuckets([]);
           resetPage();
         }}
       />

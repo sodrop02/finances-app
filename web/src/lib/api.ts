@@ -74,7 +74,6 @@ export interface AmountBucket {
 }
 
 export interface Summary {
-  days: number;
   totalSpent: number;
   byCategory: { category: string; amount: number }[];
 }
@@ -85,6 +84,15 @@ export interface PlaidItem {
   status: string;
   createdAt: string;
   _count: { accounts: number; transactions: number };
+}
+
+// Transaction dates are calendar dates (stored as UTC midnight), not points in
+// time — format in UTC so e.g. Sept 1 never rolls back to Aug 31 in timezones
+// behind UTC (new Date(value).toLocaleDateString() would apply the viewer's
+// local timezone and shift it).
+const UTC_DATE_FORMAT = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' });
+export function formatDate(value: string | Date): string {
+  return UTC_DATE_FORMAT.format(new Date(value));
 }
 
 // minor units (cents) -> display string

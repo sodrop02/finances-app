@@ -28,35 +28,43 @@ const BAR_AREA = 64; // px height of the plot band
  * whatever filters the transaction list is currently using.
  *  - blue bar  = number of transactions in the range
  *  - green bar = total dollars in the range
- * Clicking a column filters the table to that range (the selected column keeps
- * full color, the rest dim).
+ * Clicking a column toggles that range into/out of the selection (multiple
+ * ranges can be active at once); selected columns keep full color, the rest
+ * dim. The summary line above sums only the selected ranges when any are
+ * picked, otherwise it sums everything.
  */
 export function AmountBuckets({
   accountId,
   itemId,
   search,
-  days,
+  from,
+  to,
   selected,
-  onSelect,
+  onToggle,
+  onClear,
 }: {
   accountId?: string;
   itemId?: string;
   search?: string;
-  days?: number;
-  selected: BucketSelection | null;
-  onSelect: (bucket: AmountBucket | null) => void;
+  from?: string;
+  to?: string;
+  selected: BucketSelection[];
+  onToggle: (bucket: AmountBucket) => void;
+  onClear: () => void;
 }) {
   const mode = useTheme().palette.mode;
   const color = (k: keyof typeof COLORS) => COLORS[k][mode];
 
-  const { data, isLoading } = useTransactionBuckets({ accountId, itemId, search, days });
+  const { data, isLoading } = useTransactionBuckets({ accountId, itemId, search, from, to });
   const buckets = data?.buckets ?? [];
   const maxCount = Math.max(1, ...buckets.map((b) => b.count));
   const maxTotal = Math.max(1, ...buckets.map((b) => b.total));
-  const totalCount = buckets.reduce((n, b) => n + b.count, 0);
-  const totalAmount = buckets.reduce((n, b) => n + b.total, 0);
 
-  const isSelected = (b: AmountBucket) => selected?.min === b.min && selected?.max === b.max;
+  const isSelected = (b: AmountBucket) => selected.some((s) => s.min === b.min && s.max === b.max);
+  const hasSelection = selected.length > 0;
+  const countedBuckets = hasSelection ? buckets.filter(isSelected) : buckets;
+  const totalCount = countedBuckets.reduce((n, b) => n + b.count, 0);
+  const totalAmount = countedBuckets.reduce((n, b) => n + b.total, 0);
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -64,8 +72,8 @@ export function AmountBuckets({
         <Typography variant="overline" color="text.secondary">
           Transactions by amount
         </Typography>
-        {selected && (
-          <Link component="button" variant="caption" underline="hover" onClick={() => onSelect(null)}>
+        {hasSelection && (
+          <Link component="button" variant="caption" underline="hover" onClick={onClear}>
             Clear filter
           </Link>
         )}
@@ -84,6 +92,9 @@ export function AmountBuckets({
               {money(totalAmount)}
             </Box>{' '}
             total
+            {hasSelection && (
+              <> in {selected.length-1} selected range{selected.length === 1 ? '' : 's'}</>
+            )}
           </>
         )}
       </Typography>
@@ -104,7 +115,7 @@ export function AmountBuckets({
         {!isLoading &&
           buckets.map((b) => {
             const active = isSelected(b);
-            const dimmed = selected !== null && !active;
+            const dimmed = hasSelection && !active;
             return (
               <Tooltip
                 key={b.label}
@@ -113,7 +124,7 @@ export function AmountBuckets({
                   <>
                     {b.count.toLocaleString()} transaction{b.count === 1 ? '' : 's'} · {money(b.total)}{' '}
                     total
-                    {b.count > 0 && <> — click to {active ? 'clear' : 'filter'}</>}
+                    {b.count > 0 && <> — click to {active ? 'remove' : 'add'}</>}
                   </>
                 }
               >
@@ -121,7 +132,7 @@ export function AmountBuckets({
                   component="button"
                   type="button"
                   disabled={b.count === 0}
-                  onClick={() => onSelect(active ? null : b)}
+                  onClick={() => onToggle(b)}
                   sx={{
                     flex: 1,
                     minWidth: 0,

@@ -6,15 +6,18 @@ import Box from '@mui/material/Box';
 import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
+import { useState } from 'react';
 import { useAccounts, useItems, useSummary } from '../lib/queries';
 import { money } from '../lib/api';
 import { useHistoryRange } from '../lib/historyRange';
 import { PlaidLinkButton } from '../components/PlaidLinkButton';
+import { AccountSelect, ALL_ACCOUNTS, accountFilterParams, type AccountFilter } from '../components/AccountSelect';
 
 export function Dashboard() {
-  const { days } = useHistoryRange();
+  const { resolved } = useHistoryRange();
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>(ALL_ACCOUNTS);
   const accounts = useAccounts();
-  const summary = useSummary(days);
+  const summary = useSummary({ from: resolved.from, to: resolved.to, ...accountFilterParams(accountFilter) });
   const items = useItems();
 
   const noBanks = items.data && items.data.items.length === 0;
@@ -70,7 +73,7 @@ export function Dashboard() {
           <Card>
             <CardContent>
               <Typography variant="overline" color="text.secondary">
-                Spent (last {days} days)
+                Spent ({resolved.label})
               </Typography>
               <Typography variant="h4" fontWeight={700}>
                 {money(summary.data?.totalSpent)}
@@ -94,9 +97,19 @@ export function Dashboard() {
 
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Spending by category ({days} days)
-          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 1,
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 1,
+            }}
+          >
+            <Typography variant="h6">Spending by category ({resolved.label})</Typography>
+            <AccountSelect value={accountFilter} onChange={setAccountFilter} />
+          </Box>
           <Stack spacing={1.5} mt={1}>
             {summary.data?.byCategory.map((c) => {
               const pct = summary.data.totalSpent

@@ -4,6 +4,19 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth.js';
 
+// Amount-range buckets for the spending-distribution summary, in dollars.
+// `min` is exclusive, `max` is inclusive (except the top, open-ended bucket).
+// Ordered smallest to largest — the frontend renders them left to right.
+const AMOUNT_BUCKETS = [
+  { label: '$0 – $20', min: 0, max: 20 },
+  { label: '$20 – $50', min: 20, max: 50 },
+  { label: '$50 – $100', min: 50, max: 100 },
+  { label: '$100 – $250', min: 100, max: 250 },
+  { label: '$250 – $500', min: 250, max: 500 },
+  { label: '$500 – $1,000', min: 500, max: 1000 },
+  { label: '$1,000+', min: 1000, max: null },
+] as const;
+
 // Filters shared by the transaction list and the amount-bucket summary.
 const listFilters = z.object({
   accountId: z.string().optional(),
@@ -11,14 +24,9 @@ const listFilters = z.object({
   search: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
-  // amount range, in dollars — mirrors AMOUNT_BUCKETS below (min exclusive, max inclusive)
-  minAmount: z.coerce.number().optional(),
-  maxAmount: z.coerce.number().optional(),
-  // NB: z.coerce.boolean() would turn the string "false" into true — parse explicitly
-  pending: z
-    .enum(['true', 'false'])
-    .transform((v) => v === 'true')
-    .optional(),
+  // comma-separated AMOUNT_BUCKETS `min` markers selected on the graph, e.g.
+  // "0,500,1000" — matches a transaction that falls in ANY of them (OR)
+  amountBuckets: z.string().optional(),
 });
 
 function buildWhere(q: z.infer<typeof listFilters>): Prisma.TransactionWhereInput {
@@ -32,28 +40,18 @@ function buildWhere(q: z.infer<typeof listFilters>): Prisma.TransactionWhereInpu
       ...(q.to ? { lte: new Date(q.to) } : {}),
     };
   }
-  if (q.minAmount !== undefined || q.maxAmount !== undefined) {
-    where.amount = {
-      ...(q.minAmount !== undefined ? { gt: Math.round(q.minAmount * 100) } : {}),
-      ...(q.maxAmount !== undefined ? { lte: Math.round(q.maxAmount * 100) } : {}),
-    };
+  if (q.amountBuckets) {
+    const mins = new Set(q.amountBuckets.split(',').map(Number));
+    const selected = AMOUNT_BUCKETS.filter((b) => mins.has(b.min));
+    if (selected.length) {
+      where.pending = false; // buckets are defined over non-pending outflows
+      where.OR = selected.map((b) => ({
+        amount: { gt: b.min * 100, ...(b.max !== null ? { lte: b.max * 100 } : {}) },
+      }));
+    }
   }
-  if (q.pending !== undefined) where.pending = q.pending;
   return where;
 }
-
-// Amount-range buckets for the spending-distribution summary, in dollars.
-// `min` is exclusive, `max` is inclusive (except the top, open-ended bucket).
-// Ordered smallest to largest — the frontend renders them left to right.
-const AMOUNT_BUCKETS = [
-  { label: '$0 – $20', min: 0, max: 20 },
-  { label: '$20 – $50', min: 20, max: 50 },
-  { label: '$50 – $100', min: 50, max: 100 },
-  { label: '$100 – $250', min: 100, max: 250 },
-  { label: '$250 – $500', min: 250, max: 500 },
-  { label: '$500 – $1,000', min: 500, max: 1000 },
-  { label: '$1,000+', min: 1000, max: null },
-] as const;
 
 export async function transactionRoutes(app: FastifyInstance) {
   app.get('/api/transactions', { preHandler: requireAuth }, async (request) => {
@@ -118,15 +116,39 @@ export async function transactionRoutes(app: FastifyInstance) {
     return { buckets };
   });
 
-  // Spend-by-category for the dashboard, over the last N days.
+  // Spend-by-category for the dashboard, over an arbitrary date window
+  // (a rolling range or a specific calendar month), optionally scoped to one
+  // account or institution. The window is resolved client-side; this route
+  // just takes the resulting from/to.
   app.get('/api/summary', { preHandler: requireAuth }, async (request) => {
-    const q = z.object({ days: z.coerce.number().min(1).max(365).default(120) }).parse(request.query);
-    const since = new Date();
-    since.setDate(since.getDate() - q.days);
+    const q = z
+      .object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+        accountId: z.string().optional(),
+        itemId: z.string().optional(),
+      })
+      .parse(request.query);
+
+    // 120-day fallback if neither bound is given (e.g. a direct API call)
+    const since = q.from
+      ? new Date(q.from)
+      : (() => {
+          const d = new Date();
+          d.setDate(d.getDate() - 120);
+          return d;
+        })();
+    const until = q.to ? new Date(q.to) : undefined;
 
     const grouped = await prisma.transaction.groupBy({
       by: ['category'],
-      where: { date: { gte: since }, amount: { gt: 0 }, pending: false },
+      where: {
+        date: { gte: since, ...(until ? { lte: until } : {}) },
+        amount: { gt: 0 },
+        pending: false,
+        ...(q.accountId ? { accountId: q.accountId } : {}),
+        ...(q.itemId ? { itemId: q.itemId } : {}),
+      },
       _sum: { amount: true },
       orderBy: { _sum: { amount: 'desc' } },
     });
@@ -134,7 +156,6 @@ export async function transactionRoutes(app: FastifyInstance) {
     const totalSpent = grouped.reduce((acc, g) => acc + (g._sum.amount ?? 0), 0);
 
     return {
-      days: q.days,
       totalSpent,
       byCategory: grouped.map((g) => ({
         category: g.category ?? 'Uncategorized',

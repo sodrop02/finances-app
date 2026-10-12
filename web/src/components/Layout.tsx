@@ -10,8 +10,14 @@ import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
+import ListSubheader from '@mui/material/ListSubheader';
 import { useSync, useLogout } from '../lib/queries';
-import { HISTORY_DAY_OPTIONS, useHistoryRange, type HistoryDays } from '../lib/historyRange';
+import {
+  ROLLING_DAY_OPTIONS,
+  recentMonths,
+  useHistoryRange,
+  type HistoryRange,
+} from '../lib/historyRange';
 
 const tabs = [
   { label: 'Dashboard', to: '/' },
@@ -19,12 +25,23 @@ const tabs = [
   { label: 'Accounts', to: '/accounts' },
 ];
 
+function encodeRange(r: HistoryRange): string {
+  return r.kind === 'rolling' ? `rolling:${r.days}` : `month:${r.year}-${r.month}`;
+}
+function decodeRange(v: string): HistoryRange {
+  const [kind, rest] = v.split(':');
+  if (kind === 'rolling') return { kind: 'rolling', days: Number(rest) as 30 | 60 | 90 };
+  const [year, month] = rest.split('-').map(Number);
+  return { kind: 'month', year, month };
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const sync = useSync();
   const logout = useLogout();
-  const { days, setDays } = useHistoryRange();
+  const { range, setRange } = useHistoryRange();
+  const months = recentMonths(12);
   const current = Math.max(
     0,
     tabs.findIndex((t) => t.to === location.pathname),
@@ -67,13 +84,21 @@ export function Layout({ children }: { children: ReactNode }) {
             size="small"
             variant="standard"
             label="History"
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value) as HistoryDays)}
-            sx={{ minWidth: 120, flexShrink: 0, alignSelf: 'center' }}
+            value={encodeRange(range)}
+            onChange={(e) => setRange(decodeRange(e.target.value))}
+            slotProps={{ select: { MenuProps: { PaperProps: { sx: { maxHeight: 420 } } } } }}
+            sx={{ minWidth: 170, flexShrink: 0, alignSelf: 'center' }}
           >
-            {HISTORY_DAY_OPTIONS.map((d) => (
-              <MenuItem key={d} value={d}>
+            <ListSubheader disableSticky>Quick ranges</ListSubheader>
+            {ROLLING_DAY_OPTIONS.map((d) => (
+              <MenuItem key={d} value={`rolling:${d}`}>
                 Last {d} days
+              </MenuItem>
+            ))}
+            <ListSubheader disableSticky>By month</ListSubheader>
+            {months.map((m) => (
+              <MenuItem key={`${m.year}-${m.month}`} value={`month:${m.year}-${m.month}`}>
+                {m.label}
               </MenuItem>
             ))}
           </TextField>
