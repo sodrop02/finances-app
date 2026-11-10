@@ -126,6 +126,25 @@ export async function syncItem(itemId: string) {
   return syncTransactions(itemId);
 }
 
+interface PlaidErrorBody {
+  error_code?: string;
+  error_type?: string;
+  error_message?: string;
+}
+
+function describeError(err: unknown): { error: string; error_code?: string; error_type?: string } {
+  const axiosLike = err as { isAxiosError?: boolean; response?: { data: PlaidErrorBody } };
+  if (axiosLike.isAxiosError && axiosLike.response) {
+    const data = axiosLike.response.data ?? {};
+    return {
+      error: data.error_message ?? 'Plaid request failed',
+      error_code: data.error_code,
+      error_type: data.error_type,
+    };
+  }
+  return { error: (err as Error).message };
+}
+
 export async function syncAll() {
   const items = await prisma.item.findMany({ where: { status: 'active' } });
   const results: Record<string, unknown> = {};
@@ -133,7 +152,12 @@ export async function syncAll() {
     try {
       results[item.id] = await syncItem(item.id);
     } catch (err) {
-      results[item.id] = { error: (err as Error).message };
+      const described = describeError(err);
+      results[item.id] = described;
+      // mark the item so the UI can prompt for re-link instead of syncing silently forever
+      if (described.error_code === 'ITEM_LOGIN_REQUIRED') {
+        await prisma.item.update({ where: { id: item.id }, data: { status: 'login_required' } });
+      }
     }
   }
   return results;

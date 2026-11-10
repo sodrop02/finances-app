@@ -121,7 +121,9 @@ export function useItems() {
 
 export function useCreateLinkToken() {
   return useMutation({
-    mutationFn: () => api.post<{ link_token: string }>('/api/plaid/link-token'),
+    // omit itemId for a brand-new bank connection; pass it for update-mode (re-auth)
+    mutationFn: (itemId?: string) =>
+      api.post<{ link_token: string }>('/api/plaid/link-token', itemId ? { itemId } : undefined),
   });
 }
 
@@ -132,6 +134,14 @@ export function useExchangeToken() {
       public_token: string;
       institution?: { institution_id?: string; name?: string };
     }) => api.post('/api/plaid/exchange', input),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useRelinkComplete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => api.post(`/api/plaid/items/${itemId}/relink-complete`),
     onSuccess: () => qc.invalidateQueries(),
   });
 }
